@@ -1,54 +1,30 @@
-import {
-  GoogleGenerativeAI,
-  HarmCategory,
-  HarmBlockThreshold,
-} from "@google/generative-ai";
+// src/config/gemini.js
+import axios from "axios";
 
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
-const MODEL_NAME = "gemini-1.5-flash";
+// Free search/answer API (DuckDuckGo Instant Answer)
+const API_URL = "https://api.duckduckgo.com/?format=json&no_redirect=1&no_html=1&q=";
 
 async function runChat(prompt) {
-  if (!API_KEY) {
-    console.error("❌ Missing API key! Check your .env file.");
-    return "Error: API key not loaded.";
-  }
-
   try {
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+    const url = API_URL + encodeURIComponent(prompt);
+    const res = await axios.get(url, { timeout: 10000 });
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.9,
-        topK: 1,
-        topP: 1,
-        maxOutputTokens: 2048,
-      },
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-        },
-      ],
-    });
+    // DuckDuckGo returns multiple fields, prefer AbstractText
+    const data = res.data;
+    if (data.AbstractText && data.AbstractText.trim() !== "") {
+      return data.AbstractText;
+    }
 
-    return result.response.text();
-  } catch (error) {
-    console.error("❌ Gemini API error:", error);
-    return "Error: Could not get response.";
+    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+      // Take first related topic with text
+      const first = data.RelatedTopics[0];
+      if (first.Text) return first.Text;
+    }
+
+    return "No direct answer found, please refine your search.";
+  } catch (err) {
+    console.error("Search API error:", err.message || err);
+    return "Error: Could not fetch response.";
   }
 }
 
